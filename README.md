@@ -161,3 +161,35 @@ Total duration:
 ## License
 
 [MIT License](LICENSE)
+
+## Speech-to-Text (Whisper)
+
+Transcribe audio files to text using OpenAI Whisper (`whisper-1`).
+
+### CLI Usage
+
+- Basic (prints to stdout):
+
+```
+python stt_openai.py /absolute/path/to/audio.mp3 --language ko
+```
+
+- Save to a file:
+
+```
+python stt_openai.py /absolute/path/to/audio.mp3 --language ko --output output.txt
+```
+
+- Get SRT subtitles:
+
+```
+python stt_openai.py /absolute/path/to/audio.mp3 --language ko --response-format srt --output output.srt
+```
+
+- Supported `--response-format` values: `text` (default), `srt`, `vtt`, `verbose_json`, `json`
+
+Make sure your OpenAI API key is available via environment variable:
+
+```
+export OPENAI_API_KEY="your-api-key"
+```
