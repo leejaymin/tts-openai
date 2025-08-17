@@ -17,7 +17,8 @@ def main():
     process_presentation(
         input_file="sample_presentation.txt",
         output_dir="example_output",
-        voice="onyx"  # Male voice
+        voice="onyx",  # Male voice
+        speed=1.25,
     )
     
     # Example 2: Convert a single text to speech
@@ -34,7 +35,8 @@ def main():
     text_to_speech(
         text=single_text,
         output_file="example_output/thank_you.mp3",
-        voice="onyx"  # Male voice
+        voice="onyx",  # Male voice
+        speed=0.9,
     )
     
     print("\nExamples completed. Check the 'example_output' directory for the generated audio files.")
