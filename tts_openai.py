@@ -3,6 +3,8 @@ import argparse
 from pathlib import Path
 import openai
 import re  # 추가: 정규식 모듈을 상단으로 이동
+import subprocess
+import shutil
 
 
 def split_text_by_slides(text):
@@ -49,7 +51,78 @@ def _response_to_bytes(resp):
         raise TypeError(f"Unsupported response type for audio content: {type(resp)}") from e
 
 
-def text_to_speech(text, output_file, voice="alloy"):
+def _build_atempo_filter(speed: float) -> str:
+    """
+    Build a valid ffmpeg atempo filter chain for an arbitrary positive speed.
+    Each atempo must be in [0.5, 2.0], so chain multiples to cover outside that range.
+    """
+    if speed <= 0:
+        raise ValueError("speed must be > 0")
+    # Within tolerance, treat as 1.0
+    if abs(speed - 1.0) < 1e-6:
+        return "atempo=1.0"
+
+    filters = []
+    remaining = speed
+
+    # Handle speeds > 2.0
+    while remaining > 2.0:
+        filters.append("atempo=2.0")
+        remaining /= 2.0
+
+    # Handle speeds < 0.5
+    while remaining < 0.5:
+        filters.append("atempo=0.5")
+        remaining /= 0.5
+
+    filters.append(f"atempo={remaining:.6f}")
+    return ",".join(filters)
+
+
+def _apply_speed_with_ffmpeg(path: str, speed: float) -> None:
+    """
+    Apply speed change to an audio file in-place using ffmpeg atempo filter (pitch-preserving).
+    If ffmpeg is not available or speed is 1.0, this is a no-op.
+    """
+    if abs(speed - 1.0) < 1e-6:
+        return
+
+    if shutil.which("ffmpeg") is None:
+        print("Warning: ffmpeg not found. Skipping speed adjustment.")
+        return
+
+    src = Path(path)
+    # Preserve original extension by inserting .tmp before suffix
+    tmp_out = src.with_name(src.stem + ".tmp" + src.suffix)
+
+    filter_str = _build_atempo_filter(speed)
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-i", str(src),
+        "-filter:a", filter_str,
+        "-c:a", "libmp3lame",
+        "-b:a", "192k",
+        "-vn",
+        str(tmp_out),
+    ]
+
+    try:
+        subprocess.run(cmd, check=True)
+        os.replace(str(tmp_out), str(src))
+    finally:
+        # Ensure temp is removed if something failed
+        if tmp_out.exists():
+            try:
+                tmp_out.unlink()
+            except Exception:
+                pass
+
+
+def text_to_speech(text, output_file, voice="alloy", speed=1.0):
     """
     Convert text to speech using OpenAI's API.
 
@@ -58,6 +131,8 @@ def text_to_speech(text, output_file, voice="alloy"):
         output_file (str): Path to save the audio file
         voice (str): The voice to use (default: alloy, which is a male voice)
                      Options: alloy, echo, fable, onyx, nova, shimmer
+        speed (float): Playback speed multiplier. 1.0 = normal, 0.5 = half-speed,
+                       2.0 = double-speed. Requires ffmpeg for post-processing.
     """
     try:
         response = openai.audio.speech.create(
@@ -77,6 +152,9 @@ def text_to_speech(text, output_file, voice="alloy"):
             Path(output_file).parent.mkdir(parents=True, exist_ok=True)
             with open(output_file, "wb") as f:
                 f.write(audio_bytes)
+
+        # Apply speed adjustment if requested
+        _apply_speed_with_ffmpeg(output_file, speed)
 
         print(f"Audio saved to {output_file}")
         return True
@@ -136,7 +214,7 @@ def _parse_slides_option(slides_opt: str, total: int):
     return selected
 
 
-def process_presentation(input_file, output_dir, voice="onyx", slides_opt: str = None):
+def process_presentation(input_file, output_dir, voice="onyx", slides_opt: str = None, speed: float = 1.0):
     """
     Process a presentation script and convert each slide to speech.
 
@@ -146,6 +224,7 @@ def process_presentation(input_file, output_dir, voice="onyx", slides_opt: str =
         voice (str): The voice to use (default: onyx, which is a male voice)
         slides_opt (str): 특정 슬라이드만 처리하기 위한 선택 문자열 (예: "1,3-5")
                           None이면 전체 슬라이드 처리
+        speed (float): Playback speed multiplier passed to TTS post-processing.
     """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -174,7 +253,7 @@ def process_presentation(input_file, output_dir, voice="onyx", slides_opt: str =
             continue
         output_file = output_path / f"slide_{i:02d}.mp3"
         print(f"Processing slide {i}...")
-        text_to_speech(slide_text, str(output_file), voice)
+        text_to_speech(slide_text, str(output_file), voice, speed=speed)
 
 
 def main():
@@ -184,6 +263,7 @@ def main():
     parser.add_argument("--voice", default="onyx", help="Voice to use (default: 'onyx' - male voice). Options: alloy, echo, fable, onyx, nova, shimmer")
     parser.add_argument("--api-key", help="OpenAI API key (alternatively, set OPENAI_API_KEY environment variable)")
     parser.add_argument("--slides", help='처리할 슬라이드 지정 (예: "1", "2,4", "3-5", "1,3-4,7"). 지정하지 않으면 전체 처리.', default=None)
+    parser.add_argument("--speed", type=float, default=1.0, help="Playback speed multiplier (e.g., 0.8, 1.0, 1.25, 1.5). Requires ffmpeg.")
 
     args = parser.parse_args()
 
@@ -196,7 +276,7 @@ def main():
         print("Error: OpenAI API key not provided. Please provide it using --api-key or set the OPENAI_API_KEY environment variable.")
         return
 
-    process_presentation(args.input_file, args.output_dir, args.voice, slides_opt=args.slides)
+    process_presentation(args.input_file, args.output_dir, args.voice, slides_opt=args.slides, speed=args.speed)
 
 
 if __name__ == "__main__":

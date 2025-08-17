@@ -9,6 +9,7 @@ This tool converts presentation scripts into speech using OpenAI's Text-to-Speec
 - Automatically splits presentation scripts by slides
 - Saves each slide as a separate audio file
 - Customizable output directory and voice options
+- Optional speech speed control via ffmpeg (pitch-preserving)
 
 ## Requirements
 
@@ -16,6 +17,8 @@ This tool converts presentation scripts into speech using OpenAI's Text-to-Speec
 - OpenAI API key
 - Required Python packages:
   - openai
+- Optional (for speed control):
+  - ffmpeg (adds pitch-preserving speed change using atempo)
 
 ## Installation
 
@@ -64,6 +67,16 @@ This will:
 python tts_openai.py sample_presentation.txt --output-dir my_audio_files --voice alloy --api-key "your-api-key"
 ```
 
+#### Control Speech Speed (requires ffmpeg)
+
+```
+python tts_openai.py sample_presentation.txt --speed 1.25
+```
+
+- `--speed` sets a playback speed multiplier, preserving pitch via ffmpeg's atempo filter.
+- Examples: `0.8` (slower), `1.0` (default), `1.25`, `1.5`, `2.0`.
+- If ffmpeg is not installed, the script prints a warning and skips speed adjustment.
+
 ### Programmatic Usage
 
 You can also use the functions from the `tts_openai.py` module in your own Python scripts. See `example.py` for a complete example:
@@ -71,18 +84,20 @@ You can also use the functions from the `tts_openai.py` module in your own Pytho
 ```python
 from tts_openai import process_presentation, text_to_speech
 
-# Process an entire presentation
+# Process an entire presentation (25% faster)
 process_presentation(
     input_file="sample_presentation.txt",
     output_dir="example_output",
-    voice="onyx"  # Male voice
+    voice="onyx",
+    speed=1.25,
 )
 
-# Convert a single text to speech
+# Convert a single text to speech (10% slower)
 text_to_speech(
     text="Thank you for attending my presentation.",
     output_file="example_output/thank_you.mp3",
-    voice="onyx"  # Male voice
+    voice="onyx",
+    speed=0.9,
 )
 ```
 
@@ -101,6 +116,7 @@ Note: Remember to set your OpenAI API key before running the example.
 - `--voice`: Voice to use (default: 'onyx' - male voice)
   - Available voices: alloy, echo, fable, onyx, nova, shimmer
 - `--api-key`: OpenAI API key (alternatively, set the OPENAI_API_KEY environment variable)
+- `--speed`: Playback speed multiplier (default: `1.0`). Requires ffmpeg for pitch-preserving change.
 
 ## Input Format
 
